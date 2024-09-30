@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { VkPost } from '../../models/vk.interface';
+import { VkPost } from '../../models/vk-post.interface';
 import { Telegraf } from 'telegraf';
 import { ConfigService } from '@nestjs/config';
 
@@ -102,16 +102,16 @@ export class TelegramService {
 
   async sendMessageToTelegram(chatId: string, vkPost: { object: VkPost }) {
     const preparedPost = this.prepareTgPost(vkPost.object);
-    const post = this.parseLinks(preparedPost);
-    if (!post) {
+    if (!preparedPost) {
       return;
     }
+    const post = this.parseLinks(preparedPost);
 
     try {
       // Send text and photo in one post
       if (post.types.photo && post.types.text) {
         // This is a trick to send a group of pictures with a description, the first picture should have a caption
-        post.photos[0].caption = this.md2escape(post.text.slice(0, 1024));
+        post.photos[0].caption = post.text.slice(0, 1024);
         await this.bot.telegram.sendMediaGroup(chatId, post.photos);
         return;
       }
@@ -129,9 +129,13 @@ export class TelegramService {
       // Send text and link
       if (post.types.text && post.types.link) {
         const message = `${post.text}\n\n${post.link}`;
-        await this.bot.telegram.sendMessage(chatId, message, {
-          parse_mode: 'MarkdownV2',
-        });
+        await this.bot.telegram.sendMessage(
+          chatId,
+          this.md2escape(this.decodeHtmlEntities(message)),
+          {
+            parse_mode: 'MarkdownV2',
+          },
+        );
         return;
       }
 
@@ -222,5 +226,11 @@ export class TelegramService {
     } else {
       return escapedLinks;
     }
+  };
+
+  private decodeHtmlEntities = (text: string): string => {
+    return text.replace(/&#(\d+);/g, (match, dec) => {
+      return String.fromCharCode(dec);
+    });
   };
 }
